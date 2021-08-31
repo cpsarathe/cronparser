@@ -73,9 +73,9 @@ public class CronParserApplicationMinuteExpressionTest {
         String expression = "*/15 * * * * /usr/bin/find";
         CronExpressionOutputDTO outputDTO = cronParserApplication.parseExpression(expression);
         Set<Integer> expected = new TreeSet<Integer>();
-        int x = 5;
+        int x = 15;
         expected.add(0);
-        for (int i = 5; i < CronParserApplication.MINUTE_MAX_RANGE; i += x) {
+        for (int i = x; i < CronParserApplication.MINUTE_MAX_RANGE; i += x) {
             expected.add(i);
         }
         assertEquals(outputDTO.getMinutes(), expected);
