@@ -1,8 +1,5 @@
 package org.loop.test;
 
-/**
- * https://docs.oracle.com/cd/E12058_01/doc/doc.1014/e12030/cron_expressions.htm
- */
 public class CronParserApplication {
 
     public static final int MONTH_MAX_RANGE = 12;
@@ -11,12 +8,19 @@ public class CronParserApplication {
     public static final int MINUTE_MAX_RANGE = 60;
     public static final int HOUR_MAX_RANGE = 24;
 
+
     public static void main(String[] args) {
         CronParserApplication cronParserApplication = new CronParserApplication();
         CronExpressionOutputDTO cronExpressionOutputDTO = cronParserApplication.parseExpression(args[0]);
         cronParserApplication.formatAndPrint(cronExpressionOutputDTO);
     }
 
+    /**
+     * parse expressions  , validates , and build output
+     *
+     * @param expression
+     * @return
+     */
     public CronExpressionOutputDTO parseExpression(String expression) {
         CronExpressionOutputDTO outputDTO = null;
         try {
@@ -31,7 +35,6 @@ public class CronParserApplication {
             String dayOfWeek = expressions[4];
 
             outputDTO = new CronExpressionOutputDTO();
-
             buildSubExpression(minute, ExpressionType.MINUTE, outputDTO);
             buildSubExpression(hour, ExpressionType.HOUR, outputDTO);
             buildSubExpression(dayOfMonth, ExpressionType.DAY_OF_MONTH, outputDTO);
@@ -41,10 +44,55 @@ public class CronParserApplication {
             outputDTO.setCommandLine(expressions[5]);
 
         } catch (Exception ex) {
+            System.out.println("Invalid cron expression detected " + expression);
             throw new CronParsingException("Error in parsing cron expression " + expression, ex);
         }
 
         return outputDTO;
+    }
+
+    /**
+     * Cron expression is formed with sub expression of minutes, hours , day of month , month , day of week
+     * We shall process subexpression which guides us if one of subexpression rules are working , others will also work
+     * There are special character * , - consideration which affects output generation
+     *
+     * @param expression
+     * @param expressionType
+     * @param outputDTO
+     */
+    private void buildSubExpression(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
+        if (expression.length() == 0) {
+            throw new InvalidCronExpressionException(expressionType.name() + " expression should be minimum length 1");
+        } else if (expression.length() > 1) {
+            //possibly expression has sub type or ranges or bigger number
+            if (expression.charAt(0) == '*' && expression.charAt(1) != '/') {
+                throw new InvalidCronExpressionException(expressionType.name() + " invalid cron expression");
+            }
+            //skip number on every possible time (hour, minute, day , week , month etc)
+            else if (expression.charAt(0) == '*' && expression.charAt(1) == '/') {
+                String ss = expression.substring(2);
+                if (ss.trim().length() == 0) {
+                    throw new InvalidCronExpressionException(expressionType.name() + "invalid cron expression");
+                }
+                formOuputWithSkipInterval(ss, expressionType, outputDTO);
+            }
+            //either range of values or list of values
+            else if (expression.indexOf(",") != -1 || expression.indexOf("-") != -1) {
+                formOuputWithListOrRangeValues(expression, expressionType, outputDTO);
+            }
+            //only number if present
+            else if (Integer.parseInt(expression) > 9) {
+                formOutputWithGivenNumericValue(expression, expressionType, outputDTO);
+            }
+        }
+        //if want all possible values
+        else if (expression.length() == 1 && expression.charAt(0) == '*') {
+            formOutputWithAllPossibleValues(expression, expressionType, outputDTO);
+        }
+        //if reached here most probably it's valid number interval
+        else if (expression.charAt(0) != '*') {
+            formOutputWithGivenNumericValue(expression, expressionType, outputDTO);
+        }
     }
 
     private void formatAndPrint(CronExpressionOutputDTO outputDTO) {
@@ -62,40 +110,6 @@ public class CronParserApplication {
         System.out.println(outputDTO.getCommandLine());
     }
 
-    private void buildSubExpression(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
-        if (expression.length() == 0) {
-            throw new InvalidCronExpressionException(expressionType.name() + " expression should be minimum length 1");
-        } else if (expression.length() > 1) {
-            //possibly expression has sub type or ranges or bigger number
-            if (expression.charAt(0) == '*' && expression.charAt(1) != '/') {
-                throw new InvalidCronExpressionException(expressionType.name() + " invalid cron expression");
-            }
-            //skip number on every posisble time (hour, minute, day , week , month etc)
-            else if (expression.charAt(0) == '*' && expression.charAt(1) == '/') {
-                String ss = expression.substring(2);
-                if (ss.trim().length() == 0) {
-                    throw new InvalidCronExpressionException(expressionType.name() + "invalid cron expression");
-                }
-                formOuputWithInterval(ss, expressionType, outputDTO);
-            }
-            //either range of values or list of values
-            else if (expression.indexOf(",") != -1 || expression.indexOf("-") != -1) {
-                formOuputWithInterval(expression, expressionType, outputDTO);
-            }
-            //only number if present
-            else if (Integer.parseInt(expression) > 9) {
-                formOutputWithGivenNumber(expression, expressionType, outputDTO);
-            }
-        }
-        //if want all possible values
-        else if (expression.length() == 1 && expression.charAt(0) == '*') {
-            formOutputWithCompleteRange(expression, expressionType, outputDTO);
-        }
-        //if reached here most probably its valid number interval
-        else if (expression.charAt(0) != '*') {
-            formOutputWithGivenNumber(expression, expressionType, outputDTO);
-        }
-    }
 
     private boolean isAllowedChars(String expression) {
         for (char c : expression.toCharArray()) {
@@ -106,59 +120,11 @@ public class CronParserApplication {
         return true;
     }
 
-//    private boolean isValidNumberRange(int start, int end, ExpressionType expressionType) {
-//        if (expressionType.equals(ExpressionType.MINUTE) || expressionType.equals(ExpressionType.HOUR)) {
-//            return ((start < end) && ((start >= 0 && start <= MINUTE_MAX_RANGE) && (end >= 0 && end <= MINUTE_MAX_RANGE)));
-//        }
-//        if (expressionType.equals(ExpressionType.MONTH)) {
-//            return ((start < end) && ((start >= 1 && start <= MONTH_MAX_RANGE) && (end >= 1 && end <= MONTH_MAX_RANGE)));
-//        }
-//        if (expressionType.equals(ExpressionType.DAY_OF_MONTH)) {
-//            return ((start < end) && ((start >= 1 && start <= DAY_OF_MONTH_MAX_RANGE) && (end >= 1 && end <= DAY_OF_MONTH_MAX_RANGE)));
-//        }
-//        if (expressionType.equals(ExpressionType.DAY_OF_WEEK)) {
-//            return ((start < end) && ((start >= 1 && start <= DAY_OF_WEEK_MAX_RANGE) && (end >= 1 && end <= DAY_OF_WEEK_MAX_RANGE)));
-//        }
-//        return false;
-//    }
+    private void formOuputWithListOrRangeValues(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
+        this.formOuputWithSkipInterval(expression, expressionType, outputDTO);
+    }
 
-//    private boolean isValidNumberRange(int start, ExpressionType expressionType) {
-//        if (expressionType.equals(ExpressionType.MINUTE) || expressionType.equals(ExpressionType.HOUR)) {
-//            return isValidNumberRange(start, MINUTE_MAX_RANGE, expressionType);
-//        }
-//        if (expressionType.equals(ExpressionType.MONTH)) {
-//            return isValidNumberRange(start, MONTH_MAX_RANGE, expressionType);
-//        }
-//        if (expressionType.equals(ExpressionType.DAY_OF_MONTH)) {
-//            return isValidNumberRange(start, DAY_OF_MONTH_MAX_RANGE, expressionType);
-//        }
-//        if (expressionType.equals(ExpressionType.DAY_OF_WEEK)) {
-//            return isValidNumberRange(start, DAY_OF_WEEK_MAX_RANGE, expressionType);
-//        }
-//        return false;
-//    }
-
-//    private boolean isValidRange(String expression, ExpressionType expressionType) {
-//        String[] st = expression.split("-");
-//        int sNum = Integer.valueOf(st[0]);
-//        int eNum = Integer.valueOf(st[1]);
-//        return isValidNumberRange(sNum, eNum, expressionType);
-//    }
-//
-//    private boolean isValidNumbers(String expression) {
-//        String[] st = expression.split(",");
-//        for (String s : st) {
-//            Integer.parseInt(s);
-//        }
-//        return true;
-//    }
-//
-//    private boolean isValidNumberRange(char c, ExpressionType expressionType) {
-//        int num = Character.getNumericValue(c);
-//        return isValidNumberRange(num, expressionType);
-//    }
-
-    private void formOuputWithInterval(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
+    private void formOuputWithSkipInterval(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
         if (expression.indexOf("-") != -1) {
             String[] st = expression.split("-");
             int sNum = Integer.valueOf(st[0]);
@@ -252,7 +218,7 @@ public class CronParserApplication {
         }
     }
 
-    private void formOutputWithCompleteRange(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
+    private void formOutputWithAllPossibleValues(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
         if (expression.length() == 1 && expression.charAt(0) == '*') {
             if (expressionType.equals(ExpressionType.MINUTE)) {
                 for (int x = 0; x < MINUTE_MAX_RANGE; x++) {
@@ -278,7 +244,7 @@ public class CronParserApplication {
         }
     }
 
-    private void formOutputWithGivenNumber(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
+    private void formOutputWithGivenNumericValue(String expression, ExpressionType expressionType, CronExpressionOutputDTO outputDTO) {
         if (expressionType.equals(ExpressionType.MINUTE)) {
             int val = Integer.parseInt(expression);
             if (val < 0 || val > MINUTE_MAX_RANGE) {
