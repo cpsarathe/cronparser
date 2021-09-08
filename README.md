@@ -3,7 +3,7 @@ mvn clean install
 
 ### 2. cronparser-1.0-SNAPSHOT.jar artifacts should be available in your project target/ directory
 
-### 3. To run CronParse Application -
+### 3. To run CronParser Application -
 
 ### 4. Please do setup Java Environment with version 8 or higher 
 
